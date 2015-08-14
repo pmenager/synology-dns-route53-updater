@@ -8,6 +8,7 @@ Designed for Synology NAS.
 Update a DNS record within AWS Route 53 with the current external IP.
 The route 53 post will be made only if the IP has changed (previous known IP is stored via a txt file).
 Useful for internet connection without static IP address. Makes your domain point to your IP.
+Will pop up a notification in DSM for all user which are members of 'administrators'.
 
 Requirements
 ------------
@@ -44,3 +45,4 @@ Launch the script via task scheduler
   cd /path/to/folder/containing/script
   node /path/to/folder/containing/script/synoDNSUpdater.js
 ```
+5. Set the schedule as you want
