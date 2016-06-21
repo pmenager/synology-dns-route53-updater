@@ -1,0 +1,25 @@
+{
+    "name": "synoDNSUpdater",
+    "version": "0.0.2",
+    "description": "Script to update a DNS record in AWS Route 53 with the current external IP (if the IP has changed).",
+    "author": "Paul Menager <paul.menager@gmail.com>",
+    "main": "synoDNSUpdater.js",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/pmenager/synology-dns-route53-updater.git"
+    },
+    "keywords": [
+        "synology",
+        "dsm",
+        "route53",
+        "dns"
+    ],
+    "dependencies": {
+        "public-ip": "1.0.3",
+        "aws-sdk": "2.1.45"
+    },
+    "preferGlobal": false,
+    "private": true,
+    "analyze": true,
+    "license": "MIT"
+}
