@@ -7,23 +7,45 @@
 
 /**
  *
- * Author : paul menager
+ * Author : paul menager (w/ update from shawn mcnaughton)
  * Requirements : intended to be run on synology disks (NAS)
- * Installation : npm install public-ip aws-sdk
- * Run : node updateRoute53.js
- * Date : 20150814
+ * Installation : npm install
+ * Run : node synoDNSUpdater.js
+ * Date : 20170618
  */
 
-/**
- * Configuration
- */
+/**************************************
+ * Start Configuration
+ **************************************/
+// AWS_ACCESS_KEY
+// AWS Access Key for a user with route53:ChangeResourceRecordSets and route53:ListResourceRecordSets on the domain you want to modify
+// Example: ABCABCABCABCABCABC1A
 var AWS_ACCESS_KEY = "EDIT_ME";
+
+// AWS_SECRET_KEY
+// AWS Secret Key for a user with route53:ChangeResourceRecordSets and route53:ListResourceRecordSets on the domain you want to modify
+// Example: ABCD+v+Abc123Abc123Abc123Abc123Abc123Abc
 var AWS_SECRET_KEY = "EDIT_ME";
-var AWS_REGION = "us-west-1";//EDIT_ME
-var previousIpFileLocation = "ip.txt";
-var fileEncoding = "utf8";
+
+// AWS_REGION
+// AWS Region to act in - won't matter for most records, except R53 'latency optimized'
+// Example: us-west-1
+var AWS_REGION = "EDIT_ME";
+
+// ROUTE53_HOSTED_ZONE_ID
+// The Hosted Zone ID in Route 53 for the domain
+// Example: /hostedzone/ABC123ABC123AB
 var ROUTE53_HOSTED_ZONE_ID = "/hostedzone/EDIT_ME";
+
+// ROUTE53_DOMAIN
+// The actual name of the domain name to modify, including an ending period
+// Examples: mysite.com. OR me.myshareddomain.com.
 var ROUTE53_DOMAIN = "EDIT_ME";
+
+/**************************************
+ * End Configuration
+ **************************************/
+
 /**
  * Global variables
  */
@@ -33,99 +55,54 @@ var previousIP = null;
 /**
  * Dependencies
  */
-/*
- Package for getting public IP
- */
+var Promise = require('bluebird');
 var publicIp = require('public-ip');
-/*
- Package for file system
- */
-var fs = require('fs');
-/*
- var AWS = require('aws-sdk');
- */
 var AWS = require('aws-sdk');
+var exec = require('child_process').exec;
+
 AWS.config.update({
     accessKeyId: AWS_ACCESS_KEY,
     secretAccessKey: AWS_SECRET_KEY
 });
 AWS.config.update({region: AWS_REGION});
-/*
- Package used for calling synology DSM CLI tool
- */
-var exec = require('child_process').exec;
-
-var publicIpCallback = function (err, ip) {
-    if (err) {
-        console.log("Unable to get public IP");
-        return console.log(err);
-    } else {
-        currentIP = ip;
-        console.log("Current public IP is " + currentIP);
-        if (previousIP) {
-            compareIP();
-        }
-    }
-};
+var route53 = new AWS.Route53();
+var route53Async = Promise.promisifyAll(route53);
 
 var getPublicIP = function () {
-    publicIp(publicIpCallback);
+    return publicIp.v4()
+	    .then(function(ip) {
+	        currentIP = ip;
+	        console.log("Current public IP is " + currentIP);
+    	}).catch(function(err) {
+	        console.log("Unable to get public IP");
+	        console.log(err);
+	        throw err;
+    	});
 };
 
-var getPreviousIP = function () {
-    fs.stat(previousIpFileLocation, function (err, stat) {
-        if (err && err.code == 'ENOENT') {
-            fs.writeFile(previousIpFileLocation, '');
-        } else if (err) {
-            console.log('Error creating previous IP file : ', err.code);
-            notifySynologyDSM("Error creating previous IP file : " + err.code);
-        }
-    });
-
-    fs.readFile(previousIpFileLocation, fileEncoding, function (err, data) {
-        if (err) {
-            console.log("Error reading file : " + err.code);
-            notifySynologyDSM("Error reading previous IP file : " + err.code);
-        } else if (!data || data === '') {
-            writeCurrentIPInFile();
-        } else {
-            previousIP = data;
-            console.log("Previous public IP was " + previousIP);
-            if (currentIP) {
-                compareIP();
-            }
-        }
-    });
+var getLatestRegisteredIPFromRoute53 = function() {
+    var params = {
+        "HostedZoneId": ROUTE53_HOSTED_ZONE_ID,
+        "StartRecordName": ROUTE53_DOMAIN,
+        "StartRecordType": 'A',
+        "MaxItems": '1'
+    };
+    return route53Async.listResourceRecordSetsAsync(params)
+    	.then(function(listResults) {
+    		previousIP = listResults.ResourceRecordSets[0].ResourceRecords[0].Value;
+            console.log("Successfully polled Route 53 and retrieved Registered IP of " + currentIP);
+            notifySynologyDSM("Successfully polled Route 53 and retrieved Registered IP of (" + currentIP + ")");
+            return previousIP;
+    	})
+    	.catch(function(err) {
+            console.log("Unable to poll from Route 53!");
+            notifySynologyDSM("Error polling route 53 : " + err.code + " / " + err.statusCode);
+            console.log(err, err.stack);
+            throw err;
+    	});
 };
 
-var writeCurrentIPInFile = function () {
-    if (currentIP) {
-        fs.writeFile(previousIpFileLocation, currentIP, function (err) {
-            if (err) {
-                console.log("Error writing previous IP file : " + err.code);
-                notifySynologyDSM("Error writing previous IP file : " + err.code);
-            }
-            console.log("The previous IP file was updated with the new IP : " + currentIP);
-        });
-    }
-};
-
-var compareIP = function () {
-    if (hasIPChanged()) {
-        updateRoute53WithNewIP();
-    } else {
-        console.log("Nothing to do ...");
-    }
-};
-
-var hasIPChanged = function () {
-    if (currentIP && previousIP) {
-        return currentIP !== previousIP
-    }
-};
-
-var updateRoute53WithNewIP = function () {
-    var route53 = new AWS.Route53();
+var updateRoute53WithNewIP = function() {
     var params = {
         "HostedZoneId": ROUTE53_HOSTED_ZONE_ID,
         "ChangeBatch": {
@@ -146,19 +123,18 @@ var updateRoute53WithNewIP = function () {
             ]
         }
     };
-    route53.changeResourceRecordSets(params, function (err, data) {
-        if (err) {
+    return route53Async.changeResourceRecordSetsAsync(params)
+    	.then(function() {
+            console.log("Successfully updated Route 53");
+            notifySynologyDSM("New IP(" + currentIP + ") has successfully been submitted to route 53.");
+            return true;
+    	})
+    	.catch(function(err) {
             console.log("Unable to update Route 53 !");
             notifySynologyDSM("Error updating route 53 : " + err.code + " / " + err.statusCode);
             console.log(err, err.stack);
-        }
-        else {
-            console.log("Successfully updated Route 53");
-            notifySynologyDSM("New IP(" + currentIP + ") has successfully been submitted to route 53.");
-            writeCurrentIPInFile();
-        }
-    });
-
+            throw err;
+    	});
 };
 
 var notifySynologyDSM = function (body) {
@@ -169,8 +145,16 @@ var notifySynologyDSM = function (body) {
 };
 
 var startPoint = function () {
-    getPublicIP();
-    getPreviousIP();
+    Promise.all([getPublicIP(), getLatestRegisteredIPFromRoute53()])
+    	.then(function() {    		
+		    if (currentIP !== previousIP) {
+		        console.log("Current IP " + currentIP + " differs from Registered IP " + previousIP + "; updating...");
+		        return updateRoute53WithNewIP();
+		    } else {
+		        console.log("Current and Registered IP are both " + currentIP + "; exiting...");
+		        return true;
+		    }
+		});
 };
 
 startPoint();

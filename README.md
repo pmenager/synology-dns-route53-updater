@@ -22,10 +22,10 @@ Requirements
 Installation
 ------------
 1. Install node via DSM store
-2. Download / copy-paste script synoDNSUpdater.js to a local folder on the NAS filesystem
+2. Download / copy-paste script synoDNSUpdater.js and package.json to a local folder on the NAS filesystem
 3. Install node dependencies along with the script :
 ```
-  npm install public-ip aws-sdk
+  npm install
 ```
 4. Edit the configuration of the script with required settings
 

@@ -15,8 +15,9 @@
         "dns"
     ],
     "dependencies": {
-        "public-ip": "1.0.3",
-        "aws-sdk": "2.1.45"
+        "aws-sdk": "^2.72.0",
+        "bluebird": "^3.5.0",
+        "public-ip": "^2.3.5"
     },
     "preferGlobal": false,
     "private": true,
