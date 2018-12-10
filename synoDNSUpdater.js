@@ -65,8 +65,10 @@ AWS.config.update({
     secretAccessKey: AWS_SECRET_KEY
 });
 AWS.config.update({region: AWS_REGION});
+if (typeof Promise === 'undefined') {
+  AWS.config.setPromisesDependency(require('bluebird'));
+}
 var route53 = new AWS.Route53();
-var route53Async = Promise.promisifyAll(route53);
 
 var getPublicIP = function () {
     return publicIp.v4()
@@ -87,7 +89,7 @@ var getLatestRegisteredIPFromRoute53 = function() {
         "StartRecordType": 'A',
         "MaxItems": '1'
     };
-    return route53Async.listResourceRecordSetsAsync(params)
+    return route53.listResourceRecordSets(params).promise()
     	.then(function(listResults) {
     		previousIP = listResults.ResourceRecordSets[0].ResourceRecords[0].Value;
             console.log("Successfully polled Route 53 and retrieved Registered IP of " + currentIP);
@@ -123,7 +125,7 @@ var updateRoute53WithNewIP = function() {
             ]
         }
     };
-    return route53Async.changeResourceRecordSetsAsync(params)
+    return route53.changeResourceRecordSets(params).promise()
     	.then(function() {
             console.log("Successfully updated Route 53");
             notifySynologyDSM("New IP(" + currentIP + ") has successfully been submitted to route 53.");
@@ -146,7 +148,7 @@ var notifySynologyDSM = function (body) {
 
 var startPoint = function () {
     Promise.all([getPublicIP(), getLatestRegisteredIPFromRoute53()])
-    	.then(function() {    		
+    	.then(function() {
 		    if (currentIP !== previousIP) {
 		        console.log("Current IP " + currentIP + " differs from Registered IP " + previousIP + "; updating...");
 		        return updateRoute53WithNewIP();
