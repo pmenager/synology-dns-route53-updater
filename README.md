@@ -15,7 +15,7 @@ Requirements
 * A Synology NAS with DSM
 * Node installed (via DSM packet store)
 * Node required packages locally installed
-* An AWS account with a user with an access and secret key with the IAM role route53:ChangeResourceRecordSets on the required domain name
+* An AWS account with a user with an access and secret key with the IAM role route53:ChangeResourceRecordSets and route53:ListResourceRecordSets on the required domain name
 * The Zone ID of the route 53 managed domain
 * The domain / subdomain itself
 
